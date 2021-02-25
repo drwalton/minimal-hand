@@ -5,6 +5,7 @@ import tensorflow as tf
 
 ################################# detection ####################################
 
+
 def zero_padding(inputs, pad_1, pad_2):
   pad_mat = np.array([[0, 0], [pad_1, pad_2], [pad_1, pad_2], [0, 0]])
   return tf.pad(inputs, paddings=pad_mat)

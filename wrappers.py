@@ -114,8 +114,7 @@ class ModelIK:
     np.ndarray, shape [21, 4]
       Estimated global joint rotations in quaternions.
     """
-    theta = \
-      self.sess.run(self.theta, {self.input_ph: np.expand_dims(joints, 0)})
+    theta = self.sess.run(self.theta, {self.input_ph: np.expand_dims(joints, 0)})
     if len(theta.shape) == 3:
       theta = theta[0]
     return theta
