@@ -1,12 +1,17 @@
-import os
+from collections import namedtuple
+from typing import Tuple, Any
 
 import numpy as np
 import tensorflow as tf
 
-from config import *
-from kinematics import *
-from network import *
-from utils import *
+from config import HAND_MESH_MODEL_PATH, IK_UNIT_LENGTH, DETECTION_MODEL_PATH, IK_MODEL_PATH
+from kinematics import mano_to_mpii, xyz_to_delta, MPIIHandJoints
+from network import detnet, iknet
+from utils import load_pkl
+
+FRACTION = 0.95 / 4
+view = ['xyz', 'uv', 'hmap']  # + ['feed_img', 'dmap', 'lmap', 'hmap_flat', 'argmax', 'argmax_x', 'argmax_y']
+IntermVals = namedtuple('IntermVals', view)
 
 
 class ModelDet:
@@ -22,21 +27,25 @@ class ModelDet:
     """
     self.graph = tf.Graph()
     with self.graph.as_default():
-      with tf.variable_scope('prior_based_hand'):
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=config)
-        self.input_ph = tf.placeholder(tf.uint8, [128, 128, 3])
-        self.feed_img = \
-          tf.cast(tf.expand_dims(self.input_ph, 0), tf.float32) / 255
-        self.hmaps, self.dmaps, self.lmaps = \
-          detnet(self.feed_img, 1, False)
+      with tf.compat.v1.variable_scope('prior_based_hand'):
+        config = tf.compat.v1.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = FRACTION
+        self.sess = tf.compat.v1.Session(config=config)
+        self.input_ph = tf.compat.v1.placeholder(tf.uint8, [128, 128, 3])
+        self.feed_img = tf.cast(tf.expand_dims(self.input_ph, 0), tf.float32) / 255
+        self.hmaps, self.dmaps, self.lmaps = detnet(self.feed_img, 1, False)
 
         self.hmap = self.hmaps[-1]
         self.dmap = self.dmaps[-1]
         self.lmap = self.lmaps[-1]
 
-        self.uv = tf_hmap_to_uv(self.hmap)
+        self.hmap_flat = tf.reshape(self.hmap, (tf.shape(self.hmap)[0], -1, tf.shape(self.hmap)[3]))
+        self.argmax = tf.argmax(self.hmap_flat, axis=1, output_type=tf.int32)
+        self.argmax_x = self.argmax // tf.shape(self.hmap)[2]
+        self.argmax_y = self.argmax % tf.shape(self.hmap)[2]
+        self.uv = tf.stack((self.argmax_x, self.argmax_y), axis=1)
+        self.uv = tf.transpose(self.uv, [0, 2, 1])
+
         self.delta = tf.gather_nd(
           tf.transpose(self.dmap, [0, 3, 1, 2, 4]), self.uv, batch_dims=2
         )[0]
@@ -45,7 +54,7 @@ class ModelDet:
         )[0]
 
         self.uv = self.uv[0]
-      tf.train.Saver().restore(self.sess, model_path)
+      tf.compat.v1.train.Saver().restore(self.sess, model_path)
 
   def process(self, img):
     """
@@ -66,8 +75,8 @@ class ModelDet:
       The uv coordinates of the keypoints on the heat map, whose resolution is
       32x32.
     """
-    results = self.sess.run([self.xyz, self.uv], {self.input_ph: img})
-    return results
+    results = self.sess.run([getattr(self, name) for name in view], {self.input_ph: img})
+    return IntermVals(*results)
 
 
 class ModelIK:
@@ -91,14 +100,14 @@ class ModelIK:
     """
     self.graph = tf.Graph()
     with self.graph.as_default():
-      self.input_ph = tf.placeholder(tf.float32, [1, input_size, 3])
+      self.input_ph = tf.compat.v1.placeholder(tf.float32, [1, input_size, 3])
       with tf.name_scope('network'):
         self.theta = \
           network_fn(self.input_ph, net_depth, net_width, training=False)[0]
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=config)
-      tf.train.Saver().restore(self.sess, model_path)
+        config = tf.compat.v1.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = FRACTION
+        self.sess = tf.compat.v1.Session(config=config)
+      tf.compat.v1.train.Saver().restore(self.sess, model_path)
 
   def process(self, joints):
     """
@@ -142,9 +151,9 @@ class ModelPipeline:
     #    + 21 bone orientations
     #    + 21 joint coordinates in reference pose
     #    + 21 bone orientations in reference pose
-    self.ik_model = ModelIK(84, iknet, IK_MODEL_PATH, 6, 1024)
+    self.ik_model = ModelIK(84, iknet, IK_MODEL_PATH, net_depth=6, net_width=1024)
 
-  def process(self, frame):
+  def process(self, frame) -> Tuple[IntermVals, Any]:
     """
     Process a single frame.
 
@@ -160,12 +169,12 @@ class ModelPipeline:
     np.ndarray, shape [21, 4]
       Joint rotations.
     """
-    xyz, _ = self.det_model.process(frame)
-    delta, length = xyz_to_delta(xyz, MPIIHandJoints)
+    interm_vals = self.det_model.process(frame)
+    delta, length = xyz_to_delta(interm_vals.xyz, MPIIHandJoints)
     delta *= length
     pack = np.concatenate(
-      [xyz, delta, self.mpii_ref_xyz, self.mpii_ref_delta], 0
+      [interm_vals.xyz, delta, self.mpii_ref_xyz, self.mpii_ref_delta], axis=0
     )
     theta = self.ik_model.process(pack)
 
-    return xyz, theta
+    return interm_vals, theta
