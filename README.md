@@ -1,6 +1,6 @@
 # Unity Minimal Hand
 
-A hand motion capture from a single color camera + Unity + a virtual webcam.
+A hand motion capture from a single color camera + Unity + a virtual webcam (you can use it in Zoom, Discord, etc.).
 
 ![](media/screenshot.png)
 
