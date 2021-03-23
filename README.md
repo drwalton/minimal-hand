@@ -14,6 +14,10 @@ A hand motion capture from a single color camera + Unity + a virtual webcam (you
 
 3) Run the *Main.unity* scene
 
+## Tips
+
+* Use the debug.ipynb Jupyter notebook to execute step-by-step
+
 ## Known issues
 
 * 24 FPS on Nvidia GTX 1080 is rather few
