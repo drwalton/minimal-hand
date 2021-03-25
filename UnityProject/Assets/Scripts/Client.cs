@@ -62,7 +62,7 @@ public class Client : MonoBehaviour
 
                 renderTexture = new RenderTexture(frameWidth, frameHeight, depth: 24);
                 receiveTexture = new Texture2D(frameWidth, frameHeight, TextureFormat.RGB24, mipChain: false);
-                sendTexture = new Texture2D(frameWidth, frameHeight, TextureFormat.RGBA32, mipChain: false);
+                sendTexture = new Texture2D(frameWidth, frameHeight, TextureFormat.RGB24, mipChain: false);
                 image.texture = receiveTexture;
 
                 _initialized = true;

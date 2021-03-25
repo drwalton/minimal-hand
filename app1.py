@@ -65,10 +65,10 @@ class FPS:
 
 def display(msg, info_frame_, cam, recv_fps):
     proc_frame = np.frombuffer(msg[0], dtype=info_frame_.dtype)
-    proc_frame.shape = (info_frame_.shape[0], info_frame_.shape[1], 4)
+    proc_frame.shape = info_frame_.shape
     proc_frame = np.flip(proc_frame, axis=0)
     cam.send(proc_frame)
-    proc_frame = cv2.cvtColor(proc_frame, cv2.COLOR_RGBA2BGR)
+    proc_frame = cv2.cvtColor(proc_frame, cv2.COLOR_RGB2BGR)
     cv2.imshow('Webcam', proc_frame)
     cv2.waitKey(1)
     # recv_fps()
