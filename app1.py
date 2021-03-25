@@ -115,18 +115,21 @@ def calc_hand_data(iv):
 
     joints = list([to_vec(xyz) for xyz in iv.xyz.tolist()])  # tolist, because 0mq can't work with np.float
 
-    dists_x = np.array([32 *
-                        np.linalg.norm(iv.xyz[i[1:], :2] - iv.xyz[i[:-1], :2]) /
-                        np.linalg.norm(iv.uv[i[1:]] - iv.uv[i[:-1]])
-                        for i in indexes_x])
+    def calc_dists(indexes):
+        return np.array([
+            np.linalg.norm(iv.xyz[i[1:], :2] - iv.xyz[i[:-1], :2]) * 32 /
+            np.linalg.norm(iv.uv[i[1:]] - iv.uv[i[:-1]])
+            for i in indexes
+        ])
 
-    dists_y = np.array([32 *
-                        np.linalg.norm(iv.xyz[i[1:], :2] - iv.xyz[i[:-1], :2]) /
-                        np.linalg.norm(iv.uv[i[1:]] - iv.uv[i[:-1]])
-                        for i in indexes_y])
+    dists_x = filter_nan_inf(calc_dists(indexes_x))
+    dists_y = filter_nan_inf(calc_dists(indexes_y))
 
-    dist_x = np.mean(filter_nan_inf(dists_x))
-    dist_y = np.mean(filter_nan_inf(dists_y))
+    if dists_x.size == 0 or dists_y.size == 0:
+        return None
+
+    dist_x = np.mean(dists_x)
+    dist_y = np.mean(dists_y)
 
     # palm_size = sum(np.linalg.norm(iv.xyz[0] - iv.xyz[i]) for i in [1, 5, 9, 13, 17])
 
@@ -180,15 +183,19 @@ def main():
         ivl, _ = model.process(np.flip(frame_l, axis=1))
         ivr, _ = model.process(frame_r)
 
-        socket.send_json({
-            'dataL': dict(zip(hand_data_keys, calc_hand_data(ivl))),
-            'dataR': dict(zip(hand_data_keys, calc_hand_data(ivr))),
-            'frameWidth': frame_large.shape[1],
-            'frameHeight': frame_large.shape[0],
-        }, zmq.SNDMORE)
-        socket.send(np.flip(frame_large, axis=0).tobytes())
+        hand_data_l = calc_hand_data(ivl)
+        hand_data_r = calc_hand_data(ivr)
 
-        fps_send()
+        if hand_data_l is not None and hand_data_r is not None:
+            socket.send_json({
+                'dataL': dict(zip(hand_data_keys, hand_data_l)),
+                'dataR': dict(zip(hand_data_keys, hand_data_r)),
+                'frameWidth': frame_large.shape[1],
+                'frameHeight': frame_large.shape[0],
+            }, zmq.SNDMORE)
+            socket.send(np.flip(frame_large, axis=0).tobytes())
+
+            fps_send()
 
 
 if __name__ == '__main__':
