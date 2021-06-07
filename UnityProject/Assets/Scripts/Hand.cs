@@ -73,7 +73,7 @@ public class Hand
         {
             show = Mathf.Min(show + hparams.showSpeed / avgWaySum, 1f);
         }
-        spheresParent.SetActive(show.Equals(1f));
+        //spheresParent.SetActive(show.Equals(1f));
         //
 
         // Move lines
